@@ -159,23 +159,14 @@
 ; Game loop and control
 
 (defn- key-to-direction [v]
-  (let [dir (condp = (.-keyCode v)
-              38 :up
-              40 :down
-              37 :left
-              39 :right)]
-    dir))
+  ({38 :up, 40 :down,  37 :left,  39 :right} (.-keyCode v)))
 
 (defn- valid-key? [v]
   (let [k (.-keyCode v)]
     (not (nil? (some #{k} (range 37 41))))))
 
 (defn- opposite? [a b]
-  (condp = a
-    :up    (= b :down)
-    :down  (= b :up)
-    :left  (= b :right)
-    :right (= b :left)))
+  (= ({:up :down, :down :up, :left :right, :right :left} a) b))
 
 (defn- step-loop [rate start]
   "Returns a channel that returns a direction at most every @rate milliseconds.
