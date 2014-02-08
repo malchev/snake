@@ -1,6 +1,7 @@
 (ns snake.core
   (:require [cljs.core.async :as async :refer [<! >! chan]]
             [clojure.string :as string]
+            [clojure.data :as data]
             [goog.dom :as dom]
             [goog.events :as events])
   (:require-macros [cljs.core.async.macros :refer [go]]))
@@ -16,8 +17,10 @@
 ; grid; we know that a square is empty by the absence of a cell in the map
 ; with these coordinates.
 ;
-; The val in a [x y], val pair of a cell is one of the following keywords:
-;   :snake -- a square of the body of the snake
+; The val in a [x y], val pair of a cell is one of the following:
+;   <num>  -- a square of the body of the snake; the value of num increases
+;             monotonically, such that the highest value belongs to the head,
+;             and the lower one belongs to the tail
 ;   :apple -- an apple
 ;   :block -- an obstacle
 ;
@@ -25,10 +28,46 @@
 ;
 ; The edges of the grid are in the map, outlined as :block elements, as well
 ; as any obstable the grid may contain.
+
+(defn- get-snake [grid]
+  "Return a list of blocks belonging to the snake, sorted by descending order
+  (i.e., head is first, tail is last)"
+  (sort (fn [l r] (> (l 1) (r 1)))
+                      (filter (fn [v]
+                                (number? (v 1)))
+                              grid)))
+
+(declare new-apple)
+
+(defn- snake-move [grid dir]
+
+  "Takes a grid and a direction, and returns a vector of two hashes; the first
+  hash contains the additions (empty if end game), and the second hash contains
+  removals (eaten apple, tail moved)"
+
+  (let [delta   (case dir :up [-1 0] :down [1  0] :left [0 -1] :right [0  1])
+        snake   (get-snake grid)
+        head    (first snake) ; e.g. [[10 20] 5]
+        tail    (last snake)
+        loc     (vec (map + (head 0) delta))
+        content (grid loc)]
+    (if content
+      (cond (= content :apple)
+                ; add the new head, add a new apple, and remove the eaten one;
+                ; the tail stays the same, as the snake becomes one block
+                ; longer.
+                [{loc (inc (head 1)) (new-apple grid) :apple}
+                 {loc :apple}]
+            (or (= content :block) (number? content))
+                ; game over
+                [nil loc])
+      ; advance the head, remove the tail
+      [{loc (inc (head 1))} (merge {} tail)])))
+
+(defn- update-grid [grid add del]
+  (merge (first (data/diff grid del)) add))
+
 ;
-; The value of the grid at any point in time refers to a valid game state;
-; the transition function mapping one grid to another either generates a valid
-; grid, or returns nil to indicate end of game.
 
 (defn- new-apple [grid]
   "Generates a random new location for an apple in the grid; makes sure it
