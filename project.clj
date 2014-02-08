@@ -15,5 +15,4 @@
               :compiler {
                 :output-to "snake.js"
                 :output-dir "out"
-                :optimizations :none
-                :source-map true}}]})
+                :optimizations :advanced}}]})
