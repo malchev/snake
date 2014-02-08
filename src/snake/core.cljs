@@ -3,6 +3,7 @@
             [clojure.string :as string]
             [clojure.data :as data]
             [goog.dom :as dom]
+            [goog.dom.classes :as classes]
             [goog.events :as events]
             [goog.events.KeyHandler :as key-handler]
             [goog.events.KeyCodes :as key-codes])
@@ -22,6 +23,9 @@
     (.addEventListener el t
                    (fn [e] (put! in e)))
     in))
+
+(defn set-class! [el name]
+  (classes/set el name))
 
 ; The state is maintained in a hash, representing the grid, of pairs in the
 ; format [x y] val.  A pair will represent only a non-empty square in the
@@ -96,13 +100,13 @@
 (def ^:constant SNAKE "#")
 (def ^:constant BLANK "-")
 
-(defn- token-to-char [v]
+(defn- token-to-representation [v]
   "maps :block, :apple, and <num> to 'x', '@', and '#' respectively"
   (cond
-   (= v :block) BLOCK
-   (= v :apple) APPLE
-   (number? v)  SNAKE
-   true         BLANK))
+   (= v :block) [ BLOCK "block" ]
+   (= v :apple) [ APPLE "apple" ]
+   (number? v)  [ SNAKE "snake" ]
+   true         [ BLANK "table" ]))
 
 (defn- render-full! [grid]
   (let [el (by-id "snakegrid")
@@ -112,8 +116,8 @@
         (.push arr "<tr>")
         (loop [y 0]
           (when (< y height)
-            (let [v (token-to-char (grid [x y]))]
-              (.push arr (str "<td id=block-" (+ (* x height) y) ">" v "</td>")))
+            (let [[v g] (token-to-representation (grid [x y]))]
+              (.push arr (str "<td id=block-" (+ (* x height) y) " class=" g ">" v "</td>")))
             (recur (inc y))))
         (.push arr "</tr>")
         (recur (inc x))))
@@ -123,10 +127,14 @@
   "Go over the deletions, and replace them with '_' elements; then go over the
   additions, and replace them with a '#' element"
   (doseq [[[x y] _] del]
-    (set-html! (by-id (str "block-" (+ (* x height) y))) BLANK))
+    (let [el (by-id (str "block-" (+ (* x height) y)))]
+      (set-html!  el BLANK)
+      (set-class! el "table")))
   (doseq [[[x y] v] add]
-    (set-html! (by-id (str "block-" (+ (* x height) y)))
-              (token-to-char v))))
+    (let [[r g] (token-to-representation v)
+          el (by-id (str "block-" (+ (* x height) y)))]
+      (set-html!  el r)
+      (set-class! el g))))
 
 (def starting-grid
   (let [top+bot    (reduce (fn [m v]
