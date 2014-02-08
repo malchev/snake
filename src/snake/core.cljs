@@ -183,6 +183,9 @@
                      (<! (timeout 0))
                      (recur (timeout @rate) dir))
               k    (cond
+                     (= (.-keyCode v) 32)
+                        (do (while (not (= (.-keyCode (<! k)) 32)))
+                            (recur tick dir))
                      (not (valid-key? v))
                         (recur tick dir)
                      (opposite? dir (key-to-direction v))
