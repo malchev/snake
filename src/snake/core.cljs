@@ -1,9 +1,11 @@
 (ns snake.core
-  (:require [cljs.core.async :as async :refer [<! >! chan]]
+  (:require [cljs.core.async :as async :refer [<! >! put! chan timeout]]
             [clojure.string :as string]
             [clojure.data :as data]
             [goog.dom :as dom]
-            [goog.events :as events])
+            [goog.events :as events]
+            [goog.events.KeyHandler :as key-handler]
+            [goog.events.KeyCodes :as key-codes])
   (:require-macros [cljs.core.async.macros :refer [go]]))
 
 (defn- log! [& msg]
@@ -14,6 +16,12 @@
 
 (defn- by-id [id]
   (.getElementById js/document id))
+
+(defn- listen [el t]
+  (let [in (chan)]
+    (.addEventListener el t
+                   (fn [e] (put! in e)))
+    in))
 
 ; The state is maintained in a hash, representing the grid, of pairs in the
 ; format [x y] val.  A pair will represent only a non-empty square in the
@@ -140,3 +148,69 @@
 
 (render-full! starting-grid)
 
+; Game loop and control
+
+(defn- key-to-direction [v]
+  (let [dir (condp = (.-keyCode v)
+              38 :up
+              40 :down
+              37 :left
+              39 :right)]
+    dir))
+
+(defn- valid-key? [v]
+  (let [k (.-keyCode v)]
+    (not (nil? (some #{k} (range 37 41))))))
+
+(defn- opposite? [a b]
+  (condp = a
+    :up    (= b :down)
+    :down  (= b :up)
+    :left  (= b :right)
+    :right (= b :left)))
+
+(defn- step-loop [rate start]
+  "Returns a channel that returns a direction at most every @rate milliseconds.
+  If an arrow key is pressed within @rate ms, that arrow key is returned, else
+  the previous one is returned.  The starting direction is in start."
+  (let [out (chan)
+        k   (listen js/window "keydown")]
+    (go (loop [tick (timeout @rate)
+               dir  start]
+          (let [[v c] (alts! [k tick])]
+            (condp = c
+              tick (do
+                     (>! out dir)
+                     (<! (timeout 0))
+                     (recur (timeout @rate) dir))
+              k    (cond
+                     (not (valid-key? v))
+                        (recur tick dir)
+                     (opposite? dir (key-to-direction v))
+                        (recur tick dir)
+                     true
+                        (recur tick (key-to-direction v)))))))
+    out))
+
+(def rate (atom 750))
+
+(defn- speed-up! []
+  (let [s @rate
+        n (- s 25)]
+    (if (>= n 20)
+      (swap! rate (fn [_] n)))))
+
+(defn- has-apple [del]
+  (not (empty? (filter (fn [v] (= (v 1) :apple)) del))))
+
+(let [ch (step-loop rate :left)]
+  (go (loop [grid starting-grid]
+        (let [dir (<! ch)
+              [add del] (snake-move grid dir)]
+          (if (nil? add)
+            (js/alert "Game over.")
+            (do
+              (when (has-apple del)
+                (speed-up!))
+              (render-updates! add del)
+              (recur (update-grid grid add del))))))))
