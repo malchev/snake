@@ -12,6 +12,9 @@
 (defn- set-html! [el html]
   (set! (.-innerHTML el) html))
 
+(defn- by-id [id]
+  (.getElementById js/document id))
+
 ; The state is maintained in a hash, representing the grid, of pairs in the
 ; format [x y] val.  A pair will represent only a non-empty square in the
 ; grid; we know that a square is empty by the absence of a cell in the map
@@ -67,49 +70,73 @@
 (defn- update-grid [grid add del]
   (merge (first (data/diff grid del)) add))
 
-;
+; Rendering Logic
+
+(def width 20)
+(def height 50)
 
 (defn- new-apple [grid]
   "Generates a random new location for an apple in the grid; makes sure it
   doesn't generate it on top of an already-existing apple."
-  [1 1])
+  (loop [x (rand-int width) y (rand-int height)]
+    (if (grid [x y])
+      (recur (rand-int width) (rand-int height))
+      [x y])))
 
-(defn- snake [grid head dir]
+(def ^:constant APPLE "@")
+(def ^:constant BLOCK "x")
+(def ^:constant SNAKE "#")
+(def ^:constant BLANK "-")
 
-  "The transition function takes a valid grid, the location [x y] of the snake's
-  head, and a direction for the next move of the snake (one of :up, :down, :left,
-  or :right) and returns a new grid representing the next game state, or nil if
-  the game is over.  The new grid will be updated with a consumed apple, if any,
-  and a new apple, if an apple has already been consumed.
+(defn- token-to-char [v]
+  "maps :block, :apple, and <num> to 'x', '@', and '#' respectively"
+  (cond
+   (= v :block) BLOCK
+   (= v :apple) APPLE
+   (number? v)  SNAKE
+   true         BLANK))
 
-  Note that we have to take in the location of the snake's head because the
-  grid does not make that distinction.  For that reason, we return a pair
-  consisting of a the updated grid and the new snake's head."
+(defn- render-full! [grid]
+  (let [el (by-id "snakegrid")
+        arr (array)]
+    (loop [x 0]
+      (when (< x width)
+        (.push arr "<tr>")
+        (loop [y 0]
+          (when (< y height)
+            (let [v (token-to-char (grid [x y]))]
+              (.push arr (str "<td id=block-" (+ (* x height) y) ">" v "</td>")))
+            (recur (inc y))))
+        (.push arr "</tr>")
+        (recur (inc x))))
+    (set-html! el (.join arr ""))))
 
-  (let [delta   (case dir :up [0 -1] :down [0  1] :left [-1 0] :right [1  0])
-        loc     (vec (map + head delta))
-        content (grid loc)]
-    (if content
-      (cond (= content :apple)
-              (let [newgrid (assoc
-                              (assoc
-                                (dissoc grid loc)
-                                loc :snake)
-                              (new-apple grid) :apple)]
-                #_(log! "apple!")
-                [newgrid loc])
-            (or (= content :block)
-                (= content :snake))
-              (do
-                #_(log! "block or snake!")
-                [nil loc])) ; apple of obstacle
-      (do
-        #_(log! "safe to move")
-        [(assoc grid loc :snake) loc]))))
+(defn- render-updates! [add del]
+  "Go over the deletions, and replace them with '_' elements; then go over the
+  additions, and replace them with a '#' element"
+  (doseq [[[x y] _] del]
+    (set-html! (by-id (str "block-" (+ (* x height) y))) BLANK))
+  (doseq [[[x y] v] add]
+    (set-html! (by-id (str "block-" (+ (* x height) y)))
+              (token-to-char v))))
 
-(let [[g h] (snake {[50 49] :apple} [50 50] :up)]
-  (let [[g h] (snake g h :up)]
-    (log! g)
-    (log! h)))
+(def starting-grid
+  (let [top+bot    (reduce (fn [m v]
+                             (merge m {[v 0] :block,
+                                       [v (dec height)] :block}))
+                           {}
+                           (range width))
+        sides      (reduce (fn [m v]
+                             (merge m {[0 v] :block,
+                                       [(dec width) v] :block}))
+                           {}
+                           (range height))
+        borders    (merge top+bot sides)
+        borders+apple (merge borders {(new-apple borders) :apple})
+        [cx cy]    [(/ width 2) (/ height 2)]
+        snake      {[cx (dec cy)] 2 [cx cy] 1 [cx (inc cy)] 0}
+        board      (merge borders+apple snake)]
+    board))
 
+(render-full! starting-grid)
 
